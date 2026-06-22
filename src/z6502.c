@@ -14,6 +14,9 @@
 
 #include "z6502.h"
 
+#define MEM_READ(addr) cpu_s->memory_ptr[addr]
+#define MEM_WRITE(addr, val) cpu_s->memory_ptr[addr] = val
+
 //*****************************************************************************
 // Private functions
 //*****************************************************************************
@@ -39,72 +42,72 @@ uint16_t _get_operand(z6502_cpu_t* cpu_s){
             return 0;
         case IMM:
             /*Return 8 bit value*/
-            operand = cpu_s->memory_ptr[cpu_s->reg.program_counter];
+            operand = MEM_READ(cpu_s->reg.program_counter);
             cpu_s->reg.program_counter++;
             return operand;
         case ZP:
             /*Return address in zero page (0x0000-0x00FF)*/
-            operand = cpu_s->memory_ptr[cpu_s->reg.program_counter];
+            operand = MEM_READ(cpu_s->reg.program_counter);
             cpu_s->reg.program_counter++;
             return operand;
         case ZPX:
             /*Return address in zero page (0x0000-0x00FF), indexed by X*/
-            operand = (cpu_s->memory_ptr[cpu_s->reg.program_counter] + cpu_s->reg.x) % 256;
+            operand = (MEM_READ(cpu_s->reg.program_counter) + cpu_s->reg.x) % 256;
             cpu_s->reg.program_counter++;
             return operand;
         case ZPY:
             /*Return address in zero page (0x0000-0x00FF), indexed by Y*/
-            operand = (cpu_s->memory_ptr[cpu_s->reg.program_counter] + cpu_s->reg.y) % 256;
+            operand = (MEM_READ(cpu_s->reg.program_counter) + cpu_s->reg.y) % 256;
             cpu_s->reg.program_counter++;
             return operand;
         case REL:
             /*Return branch offset value*/
-            operand = cpu_s->memory_ptr[cpu_s->reg.program_counter];
+            operand = MEM_READ(cpu_s->reg.program_counter);
             cpu_s->reg.program_counter++;
             return operand;
         case ABS:
             /*Return absolute address*/
-            lo = cpu_s->memory_ptr[cpu_s->reg.program_counter];
-            hi = cpu_s->memory_ptr[cpu_s->reg.program_counter + 1];
+            lo = MEM_READ(cpu_s->reg.program_counter);
+            hi = MEM_READ(cpu_s->reg.program_counter + 1);
             operand = (hi << 8) | lo;
             cpu_s->reg.program_counter += 2;
             return operand;
         case ABX:
             /*Return absolute address, indexed by X*/
-            lo = cpu_s->memory_ptr[cpu_s->reg.program_counter];
-            hi = cpu_s->memory_ptr[cpu_s->reg.program_counter + 1];
+            lo = MEM_READ(cpu_s->reg.program_counter);
+            hi = MEM_READ(cpu_s->reg.program_counter + 1);
             operand = (((hi << 8) | lo) + cpu_s->reg.x) % 65536;
             if((lo + cpu_s->reg.x) > 0x00FF) cpu_s->page_crossing_flag = 1;
             cpu_s->reg.program_counter += 2;
             return operand;
         case ABY:
             /*Return absolute address, indexed by Y*/
-            lo = cpu_s->memory_ptr[cpu_s->reg.program_counter];
-            hi = cpu_s->memory_ptr[cpu_s->reg.program_counter + 1];
+            lo = MEM_READ(cpu_s->reg.program_counter);
+            hi = MEM_READ(cpu_s->reg.program_counter + 1);
             operand = (((hi << 8) | lo) + cpu_s->reg.y) % 65536;
             if((lo + cpu_s->reg.y) > 0x00FF) cpu_s->page_crossing_flag = 1;
             cpu_s->reg.program_counter += 2;
             return operand;
         case IND:
             /*Return indirect address*/
-            lo = cpu_s->memory_ptr[cpu_s->reg.program_counter];
-            hi = cpu_s->memory_ptr[cpu_s->reg.program_counter + 1];
+            lo = MEM_READ(cpu_s->reg.program_counter);
+            hi = MEM_READ(cpu_s->reg.program_counter + 1);
             operand = (hi << 8) | lo;
             cpu_s->reg.program_counter += 2;
-            return cpu_s->memory_ptr[operand] | (cpu_s->memory_ptr[(operand + 1) % 65536] << 8);
+            return MEM_READ(operand) | (MEM_READ((operand + 1) % 65536) << 8);
         case INX:
             /*Return X-indexed indirect address*/
-            operand = (cpu_s->memory_ptr[cpu_s->reg.program_counter] + cpu_s->reg.x) % 256;
-            lo = cpu_s->memory_ptr[operand];
-            hi = cpu_s->memory_ptr[(operand + 1) % 256];
+            operand = (MEM_READ(cpu_s->reg.program_counter) + cpu_s->reg.x) % 256;
+            lo = MEM_READ(operand);
+            hi = MEM_READ((operand + 1) % 256);
             operand = (hi << 8) | lo;
             cpu_s->reg.program_counter++;
             return operand;
         case INY:
             /*Return Indirect Y-indexed address*/
-            operand = cpu_s->memory_ptr[cpu_s->reg.program_counter];
-            lo = cpu_s->memory_ptr[operand];
-            hi = cpu_s->memory_ptr[(operand + 1) % 256];
+            operand = MEM_READ(cpu_s->reg.program_counter);
+            lo = MEM_READ(operand);
+            hi = MEM_READ((operand + 1) % 256);
             operand = ((hi << 8) | lo) + cpu_s->reg.y;
             if((lo + cpu_s->reg.y) > 0x00FF) cpu_s->page_crossing_flag = 1;
             cpu_s->reg.program_counter++;
@@ -119,12 +122,12 @@ uint16_t _get_operand(z6502_cpu_t* cpu_s){
  * @param reg Pointer to register set
  * @param value Value to check
  */
-void _update_zero_flag(z6502_register_set_t* reg, uint8_t value){
+void _update_zero_flag(z6502_cpu_t* cpu_s, uint8_t value){
     if(value == 0U){
-        reg->processor_status.zero = 1U;
+        cpu_s->reg.processor_status.zero = 1U;
     }
     else{
-        reg->processor_status.zero = 0U;
+        cpu_s->reg.processor_status.zero = 0U;
     }
 }
 
@@ -133,8 +136,8 @@ void _update_zero_flag(z6502_register_set_t* reg, uint8_t value){
  * @param reg Pointer to register set
  * @param value Value to check
  */
-void _update_negative_flag(z6502_register_set_t* reg, uint8_t value){
-    reg->processor_status.negative = (value >> 7) & 0x01;
+void _update_negative_flag(z6502_cpu_t* cpu_s, uint8_t value){
+    cpu_s->reg.processor_status.negative = (value >> 7) & 0x01;
 }
 
 /**
@@ -142,12 +145,12 @@ void _update_negative_flag(z6502_register_set_t* reg, uint8_t value){
  * @param reg Pointer to register set
  * @param value Value to check (uint16_t)
  */
-void _update_carry_flag(z6502_register_set_t* reg, uint16_t value){
+void _update_carry_flag(z6502_cpu_t* cpu_s, uint16_t value){
     if(value > 0xFF){
-        reg->processor_status.carry = 1U;
+        cpu_s->reg.processor_status.carry = 1U;
     }
     else{
-        reg->processor_status.carry = 0U;
+        cpu_s->reg.processor_status.carry = 0U;
     }
 }
 
@@ -158,12 +161,12 @@ void _update_carry_flag(z6502_register_set_t* reg, uint16_t value){
  * @param b Second operand
  * @param result Result of the operation
  */
-void _update_overflow_flag(z6502_register_set_t* reg, uint8_t a, uint8_t b, uint8_t result){
+void _update_overflow_flag(z6502_cpu_t* cpu_s, uint8_t a, uint8_t b, uint8_t result){
     if(((a ^ result) & (b ^ result) & 0x80) != 0U){
-        reg->processor_status.overflow = 1U;
+        cpu_s->reg.processor_status.overflow = 1U;
     }
     else{
-        reg->processor_status.overflow = 0U;
+        cpu_s->reg.processor_status.overflow = 0U;
     }
 }
 
@@ -173,9 +176,9 @@ void _update_overflow_flag(z6502_register_set_t* reg, uint8_t a, uint8_t b, uint
  * @param reg Pointer to register set
  * @param value Pointer to store the pulled value
  */
-void _pull_stack(uint8_t* mem, z6502_register_set_t* reg, uint8_t* value){
-    reg->stack_pointer = (reg->stack_pointer + 1U) % 256;
-    *value = mem[Z6502_STACK_BASE_ADDRESS + reg->stack_pointer];
+void _pull_stack(z6502_cpu_t* cpu_s, uint8_t* value){
+    cpu_s->reg.stack_pointer = (cpu_s->reg.stack_pointer + 1U) % 256;
+    *value = MEM_READ(Z6502_STACK_BASE_ADDRESS + cpu_s->reg.stack_pointer);
 }
 
 /**
@@ -184,9 +187,9 @@ void _pull_stack(uint8_t* mem, z6502_register_set_t* reg, uint8_t* value){
  * @param reg Pointer to register set
  * @param value Value to push onto the stack
  */
-void _push_stack(uint8_t* mem, z6502_register_set_t* reg, uint8_t value){
-    mem[Z6502_STACK_BASE_ADDRESS + reg->stack_pointer] = value;
-    reg->stack_pointer = (reg->stack_pointer - 1U) % 256;
+void _push_stack(z6502_cpu_t* cpu_s, uint8_t value){
+    MEM_WRITE(Z6502_STACK_BASE_ADDRESS + cpu_s->reg.stack_pointer, value);
+    cpu_s->reg.stack_pointer = (cpu_s->reg.stack_pointer - 1U) % 256;
 }
 
 /**
@@ -194,16 +197,16 @@ void _push_stack(uint8_t* mem, z6502_register_set_t* reg, uint8_t value){
  * @param mem Pointer to memory space
  * @param reg Pointer to register set
  */
-void _pull_register_stack(uint8_t* mem, z6502_register_set_t* reg){
+void _pull_register_stack(z6502_cpu_t* cpu_s){
     uint8_t tmp;
-    reg->stack_pointer = (reg->stack_pointer + 1U) % 256;
-    tmp = mem[Z6502_STACK_BASE_ADDRESS + reg->stack_pointer];
-    reg->processor_status.negative = (tmp >> 7) & 0x01;
-    reg->processor_status.overflow = (tmp >> 6) & 0x01;
-    reg->processor_status.decimal_mode = (tmp >> 3) & 0x01;
-    reg->processor_status.irq_disable = (tmp >> 2) & 0x01;
-    reg->processor_status.zero = (tmp >> 1) & 0x01;
-    reg->processor_status.carry = tmp & 0x01;
+    cpu_s->reg.stack_pointer = (cpu_s->reg.stack_pointer + 1U) % 256;
+    tmp = MEM_READ(Z6502_STACK_BASE_ADDRESS + cpu_s->reg.stack_pointer);
+    cpu_s->reg.processor_status.negative = (tmp >> 7) & 0x01;
+    cpu_s->reg.processor_status.overflow = (tmp >> 6) & 0x01;
+    cpu_s->reg.processor_status.decimal_mode = (tmp >> 3) & 0x01;
+    cpu_s->reg.processor_status.irq_disable = (tmp >> 2) & 0x01;
+    cpu_s->reg.processor_status.zero = (tmp >> 1) & 0x01;
+    cpu_s->reg.processor_status.carry = tmp & 0x01;
 }
 
 /**
@@ -211,17 +214,17 @@ void _pull_register_stack(uint8_t* mem, z6502_register_set_t* reg){
  * @param mem Pointer to memory space
  * @param reg Pointer to register set
  */
-void _push_register_stack(uint8_t* mem, z6502_register_set_t* reg){
-    mem[Z6502_STACK_BASE_ADDRESS+ reg->stack_pointer] = (uint8_t)(
-        reg->processor_status.negative << 7 |
-        reg->processor_status.overflow << 6 |
+void _push_register_stack(z6502_cpu_t* cpu_s){
+    MEM_WRITE(Z6502_STACK_BASE_ADDRESS+ cpu_s->reg.stack_pointer, (uint8_t)(
+        cpu_s->reg.processor_status.negative << 7 |
+        cpu_s->reg.processor_status.overflow << 6 |
         1 << 5 |
         1 << 4 |
-        reg->processor_status.decimal_mode << 3 |
-        reg->processor_status.irq_disable << 2 |
-        reg->processor_status.zero << 1 |
-        reg->processor_status.carry);
-    reg->stack_pointer = (reg->stack_pointer - 1U) % 256;
+        cpu_s->reg.processor_status.decimal_mode << 3 |
+        cpu_s->reg.processor_status.irq_disable << 2 |
+        cpu_s->reg.processor_status.zero << 1 |
+        cpu_s->reg.processor_status.carry));
+    cpu_s->reg.stack_pointer = (cpu_s->reg.stack_pointer - 1U) % 256;
 }
 
 int _check_page_crossing(uint16_t start_addr, uint16_t end_addr){
@@ -239,7 +242,7 @@ void z6502_op_ADC(z6502_cpu_t* cpu_s){
         tmp = _get_operand(cpu_s);
     }
     else{
-        tmp = cpu_s->memory_ptr[_get_operand(cpu_s)];
+        tmp = MEM_READ(_get_operand(cpu_s));
     }
 
     /*Only set in ABX, ABY and INY modes if page crossed*/
@@ -257,40 +260,40 @@ void z6502_op_ADC(z6502_cpu_t* cpu_s){
         res = cpu_s->reg.accumulator + tmp + cpu_s->reg.processor_status.carry;
     }
 
-    _update_overflow_flag(&cpu_s->reg, cpu_s->reg.accumulator, tmp, res);
-    _update_carry_flag(&cpu_s->reg, res);
+    _update_overflow_flag(cpu_s, cpu_s->reg.accumulator, tmp, res);
+    _update_carry_flag(cpu_s, res);
     cpu_s->reg.accumulator = (uint8_t)(res % 256);
-    _update_zero_flag(&cpu_s->reg, cpu_s->reg.accumulator);
-    _update_negative_flag(&cpu_s->reg, cpu_s->reg.accumulator);
+    _update_zero_flag(cpu_s, cpu_s->reg.accumulator);
+    _update_negative_flag(cpu_s, cpu_s->reg.accumulator);
 }
 void z6502_op_AND(z6502_cpu_t* cpu_s){
     if (cpu_s->ir_mode == IMM) {
         cpu_s->reg.accumulator &= (uint8_t)_get_operand(cpu_s);
     }
     else{
-        cpu_s->reg.accumulator &= cpu_s->memory_ptr[_get_operand(cpu_s)];
+        cpu_s->reg.accumulator &= MEM_READ(_get_operand(cpu_s));
     }
 
     /*Only set in ABX, ABY and INY modes if page crossed*/
     cpu_s->ir_cycles += cpu_s->page_crossing_flag;
 
-    _update_zero_flag(&cpu_s->reg, cpu_s->reg.accumulator);
-    _update_negative_flag(&cpu_s->reg, cpu_s->reg.accumulator);
+    _update_zero_flag(cpu_s, cpu_s->reg.accumulator);
+    _update_negative_flag(cpu_s, cpu_s->reg.accumulator);
 }
 void z6502_op_ASL(z6502_cpu_t* cpu_s){
     uint16_t addr;
     if (cpu_s->ir_mode == ACC) {
         cpu_s->reg.processor_status.carry = (cpu_s->reg.accumulator >> 7) & 0x01;
         cpu_s->reg.accumulator = (cpu_s->reg.accumulator << 1);
-        _update_zero_flag(&cpu_s->reg, cpu_s->reg.accumulator);
-        _update_negative_flag(&cpu_s->reg, cpu_s->reg.accumulator);
+        _update_zero_flag(cpu_s, cpu_s->reg.accumulator);
+        _update_negative_flag(cpu_s, cpu_s->reg.accumulator);
     }
     else{
         addr = _get_operand(cpu_s);
-        cpu_s->reg.processor_status.carry = (cpu_s->memory_ptr[addr] >> 7) & 0x01;
-        cpu_s->memory_ptr[addr] = (cpu_s->memory_ptr[addr] << 1);
-        _update_zero_flag(&cpu_s->reg, cpu_s->memory_ptr[addr]);
-        _update_negative_flag(&cpu_s->reg, cpu_s->memory_ptr[addr]);
+        cpu_s->reg.processor_status.carry = (MEM_READ(addr) >> 7) & 0x01;
+        MEM_WRITE(addr, (MEM_READ(addr) << 1));
+        _update_zero_flag(cpu_s, MEM_READ(addr));
+        _update_negative_flag(cpu_s, MEM_READ(addr));
     }
 }
 void z6502_op_BCC(z6502_cpu_t* cpu_s){
@@ -318,9 +321,9 @@ void z6502_op_BEQ(z6502_cpu_t* cpu_s){
     }
 }
 void z6502_op_BIT(z6502_cpu_t* cpu_s){
-    uint8_t tmp = cpu_s->memory_ptr[_get_operand(cpu_s)];
-    _update_zero_flag(&cpu_s->reg, cpu_s->reg.accumulator & tmp);
-    _update_negative_flag(&cpu_s->reg, tmp);
+    uint8_t tmp = MEM_READ(_get_operand(cpu_s));
+    _update_zero_flag(cpu_s, cpu_s->reg.accumulator & tmp);
+    _update_negative_flag(cpu_s, tmp);
     cpu_s->reg.processor_status.overflow = (tmp >> 6) & 0x01;
 }
 void z6502_op_BMI(z6502_cpu_t* cpu_s){
@@ -349,9 +352,9 @@ void z6502_op_BPL(z6502_cpu_t* cpu_s){
 }
 void z6502_op_BRK(z6502_cpu_t* cpu_s){
     uint16_t addr = (cpu_s->reg.program_counter + 2U) % 65536;
-    _push_stack(cpu_s->memory_ptr, &cpu_s->reg, (uint8_t)((addr >> 8) & 0x00FF));
-    _push_stack(cpu_s->memory_ptr, &cpu_s->reg, (uint8_t)(addr & 0x00FF));
-    _push_register_stack(cpu_s->memory_ptr, &cpu_s->reg);
+    _push_stack(cpu_s, (uint8_t)((addr >> 8) & 0x00FF));
+    _push_stack(cpu_s, (uint8_t)(addr & 0x00FF));
+    _push_register_stack(cpu_s);
     cpu_s->reg.program_counter = Z6502_IRQ_VECTOR_ADDRESS;
     cpu_s->reg.processor_status.irq_disable = 1U;
     cpu_s->reg.processor_status.break_flg = 1U;
@@ -390,7 +393,7 @@ void z6502_op_CMP(z6502_cpu_t* cpu_s){
         tmp = _get_operand(cpu_s);
     }
     else{
-        tmp = cpu_s->memory_ptr[_get_operand(cpu_s)];
+        tmp = MEM_READ(_get_operand(cpu_s));
     }
 
     /*Only set in ABX, ABY and INY modes if page crossed*/
@@ -407,7 +410,7 @@ void z6502_op_CPX(z6502_cpu_t* cpu_s){
         tmp = _get_operand(cpu_s);
     }
     else{
-        tmp = cpu_s->memory_ptr[_get_operand(cpu_s)];
+        tmp = MEM_READ(_get_operand(cpu_s));
     }
     tmp = cpu_s->reg.x - tmp;
     cpu_s->reg.processor_status.carry = (tmp >= 0)?1U:0U;
@@ -420,7 +423,7 @@ void z6502_op_CPY(z6502_cpu_t* cpu_s){
         tmp = _get_operand(cpu_s);
     }
     else{
-        tmp = cpu_s->memory_ptr[_get_operand(cpu_s)];
+        tmp = MEM_READ(_get_operand(cpu_s));
     }
     tmp = cpu_s->reg.y - tmp;
     cpu_s->reg.processor_status.carry = (tmp >= 0)?1U:0U;
@@ -429,57 +432,59 @@ void z6502_op_CPY(z6502_cpu_t* cpu_s){
 }
 void z6502_op_DEC(z6502_cpu_t* cpu_s){
     uint16_t addr = _get_operand(cpu_s);
-    cpu_s->memory_ptr[addr] = (cpu_s->memory_ptr[addr] - 1U) % 256;
-    _update_zero_flag(&cpu_s->reg, cpu_s->memory_ptr[addr]);
-    _update_negative_flag(&cpu_s->reg, cpu_s->memory_ptr[addr]);
+    uint8_t val = (MEM_READ(addr) - 1U) % 256;
+    MEM_WRITE(addr, val);
+    _update_zero_flag(cpu_s, val);
+    _update_negative_flag(cpu_s, val);
 }
 void z6502_op_DEX(z6502_cpu_t* cpu_s){
     cpu_s->reg.x = (cpu_s->reg.x - 1U) % 256;
-    _update_zero_flag(&cpu_s->reg, cpu_s->reg.x);
-    _update_negative_flag(&cpu_s->reg, cpu_s->reg.x);
+    _update_zero_flag(cpu_s, cpu_s->reg.x);
+    _update_negative_flag(cpu_s, cpu_s->reg.x);
 }
 void z6502_op_DEY(z6502_cpu_t* cpu_s){
     cpu_s->reg.y = (cpu_s->reg.y - 1U) % 256;
-    _update_zero_flag(&cpu_s->reg, cpu_s->reg.y);
-    _update_negative_flag(&cpu_s->reg, cpu_s->reg.y);
+    _update_zero_flag(cpu_s, cpu_s->reg.y);
+    _update_negative_flag(cpu_s, cpu_s->reg.y);
 }
 void z6502_op_EOR(z6502_cpu_t* cpu_s){
     if (cpu_s->ir_mode == IMM) {
         cpu_s->reg.accumulator ^= (uint8_t)_get_operand(cpu_s);
     }
     else{
-        cpu_s->reg.accumulator ^= cpu_s->memory_ptr[_get_operand(cpu_s)];
+        cpu_s->reg.accumulator ^= MEM_READ(_get_operand(cpu_s));
     }
 
     /*Only set in ABX, ABY and INY modes if page crossed*/
     cpu_s->ir_cycles += cpu_s->page_crossing_flag;
 
-    _update_zero_flag(&cpu_s->reg, cpu_s->reg.accumulator);
-    _update_negative_flag(&cpu_s->reg, cpu_s->reg.accumulator);
+    _update_zero_flag(cpu_s, cpu_s->reg.accumulator);
+    _update_negative_flag(cpu_s, cpu_s->reg.accumulator);
 }
 void z6502_op_INC(z6502_cpu_t* cpu_s){
     uint16_t addr = _get_operand(cpu_s);
-    cpu_s->memory_ptr[addr] = (cpu_s->memory_ptr[addr] + 1U) % 256;
-    _update_zero_flag(&cpu_s->reg, cpu_s->memory_ptr[addr]);
-    _update_negative_flag(&cpu_s->reg, cpu_s->memory_ptr[addr]);
+    uint8_t val = (MEM_READ(addr) + 1U) % 256;
+    MEM_WRITE(addr, val);
+    _update_zero_flag(cpu_s, val);
+    _update_negative_flag(cpu_s, val);
 }
 void z6502_op_INX(z6502_cpu_t* cpu_s){
     cpu_s->reg.x = (cpu_s->reg.x + 1U) % 256;
-    _update_zero_flag(&cpu_s->reg, cpu_s->reg.x);
-    _update_negative_flag(&cpu_s->reg, cpu_s->reg.x);
+    _update_zero_flag(cpu_s, cpu_s->reg.x);
+    _update_negative_flag(cpu_s, cpu_s->reg.x);
 }
 void z6502_op_INY(z6502_cpu_t* cpu_s){
     cpu_s->reg.y = (cpu_s->reg.y + 1U) % 256;
-    _update_zero_flag(&cpu_s->reg, cpu_s->reg.y);
-    _update_negative_flag(&cpu_s->reg, cpu_s->reg.y);
+    _update_zero_flag(cpu_s, cpu_s->reg.y);
+    _update_negative_flag(cpu_s, cpu_s->reg.y);
 }
 void z6502_op_JMP(z6502_cpu_t* cpu_s){
     cpu_s->reg.program_counter = _get_operand(cpu_s);
 }
 void z6502_op_JSR(z6502_cpu_t* cpu_s){
     uint16_t tmp = (cpu_s->reg.program_counter + 1U) % 65536;
-    _push_stack(cpu_s->memory_ptr, &cpu_s->reg, (uint8_t)((tmp >> 8) & 0x00FF));
-    _push_stack(cpu_s->memory_ptr, &cpu_s->reg, (uint8_t)(tmp & 0x00FF));
+    _push_stack(cpu_s, (uint8_t)((tmp >> 8) & 0x00FF));
+    _push_stack(cpu_s, (uint8_t)(tmp & 0x00FF));
     cpu_s->reg.program_counter = _get_operand(cpu_s);
 }
 void z6502_op_LDA(z6502_cpu_t* cpu_s){
@@ -487,57 +492,60 @@ void z6502_op_LDA(z6502_cpu_t* cpu_s){
         cpu_s->reg.accumulator = _get_operand(cpu_s);
     }
     else{
-        cpu_s->reg.accumulator = cpu_s->memory_ptr[_get_operand(cpu_s)];
+        cpu_s->reg.accumulator = MEM_READ(_get_operand(cpu_s));
     }
 
     /*Only set in ABX, ABY and INY modes if page crossed*/
     cpu_s->ir_cycles += cpu_s->page_crossing_flag;
 
-    _update_zero_flag(&cpu_s->reg, cpu_s->reg.accumulator);
-    _update_negative_flag(&cpu_s->reg, cpu_s->reg.accumulator);
+    _update_zero_flag(cpu_s, cpu_s->reg.accumulator);
+    _update_negative_flag(cpu_s, cpu_s->reg.accumulator);
 }
 void z6502_op_LDX(z6502_cpu_t* cpu_s){
     if (cpu_s->ir_mode == IMM) {
         cpu_s->reg.x = _get_operand(cpu_s);
     }
     else{
-        cpu_s->reg.x = cpu_s->memory_ptr[_get_operand(cpu_s)];
+        cpu_s->reg.x = MEM_READ(_get_operand(cpu_s));
     }
 
     /*Only set in ABY mode if page crossed*/
     cpu_s->ir_cycles += cpu_s->page_crossing_flag;
 
-    _update_zero_flag(&cpu_s->reg, cpu_s->reg.x);
-    _update_negative_flag(&cpu_s->reg, cpu_s->reg.x);
+    _update_zero_flag(cpu_s, cpu_s->reg.x);
+    _update_negative_flag(cpu_s, cpu_s->reg.x);
 }
 void z6502_op_LDY(z6502_cpu_t* cpu_s){
     if (cpu_s->ir_mode == IMM) {
         cpu_s->reg.y = _get_operand(cpu_s);
     }
     else{
-        cpu_s->reg.y = cpu_s->memory_ptr[_get_operand(cpu_s)];
+        cpu_s->reg.y = MEM_READ(_get_operand(cpu_s));
     }
 
     /*Only set in ABX mode if page crossed*/
     cpu_s->ir_cycles += cpu_s->page_crossing_flag;
 
-    _update_zero_flag(&cpu_s->reg, cpu_s->reg.y);
-    _update_negative_flag(&cpu_s->reg, cpu_s->reg.y);
+    _update_zero_flag(cpu_s, cpu_s->reg.y);
+    _update_negative_flag(cpu_s, cpu_s->reg.y);
 }
 void z6502_op_LSR(z6502_cpu_t* cpu_s){
     uint16_t addr;
+    uint8_t val;
     if (cpu_s->ir_mode == ACC) {
         cpu_s->reg.processor_status.carry = cpu_s->reg.accumulator & 0x01;
         cpu_s->reg.accumulator = (cpu_s->reg.accumulator >> 1);
-        _update_zero_flag(&cpu_s->reg, cpu_s->reg.accumulator);
-        _update_negative_flag(&cpu_s->reg, cpu_s->reg.accumulator);
+        _update_zero_flag(cpu_s, cpu_s->reg.accumulator);
+        _update_negative_flag(cpu_s, cpu_s->reg.accumulator);
     }
     else{
         addr = _get_operand(cpu_s);
-        cpu_s->reg.processor_status.carry = cpu_s->memory_ptr[addr] & 0x01;
-        cpu_s->memory_ptr[addr] = (cpu_s->memory_ptr[addr] >> 1);
-        _update_zero_flag(&cpu_s->reg, cpu_s->memory_ptr[addr]);
-        _update_negative_flag(&cpu_s->reg, cpu_s->memory_ptr[addr]);
+        val = MEM_READ(addr);
+        cpu_s->reg.processor_status.carry = val & 0x01;
+        val = val >> 1;
+        MEM_WRITE(addr, val);
+        _update_zero_flag(cpu_s, val);
+        _update_negative_flag(cpu_s, val);
     }
 }
 void z6502_op_NOP(z6502_cpu_t* cpu_s){
@@ -548,76 +556,82 @@ void z6502_op_ORA(z6502_cpu_t* cpu_s){
         cpu_s->reg.accumulator |= (uint8_t)_get_operand(cpu_s);
     }
     else{
-        cpu_s->reg.accumulator |= cpu_s->memory_ptr[_get_operand(cpu_s)];
+        cpu_s->reg.accumulator |= MEM_READ(_get_operand(cpu_s));
     }
 
     /*Only set in ABX, ABY and INY modes if page crossed*/
     cpu_s->ir_cycles += cpu_s->page_crossing_flag;
 
-    _update_zero_flag(&cpu_s->reg, cpu_s->reg.accumulator);
-    _update_negative_flag(&cpu_s->reg, cpu_s->reg.accumulator);
+    _update_zero_flag(cpu_s, cpu_s->reg.accumulator);
+    _update_negative_flag(cpu_s, cpu_s->reg.accumulator);
 }
 void z6502_op_PHA(z6502_cpu_t* cpu_s){
-    _push_stack(cpu_s->memory_ptr, &cpu_s->reg, cpu_s->reg.accumulator);
+    _push_stack(cpu_s, cpu_s->reg.accumulator);
 }
 void z6502_op_PHP(z6502_cpu_t* cpu_s){
-    _push_register_stack(cpu_s->memory_ptr, &cpu_s->reg);
+    _push_register_stack(cpu_s);
 }
 void z6502_op_PLA(z6502_cpu_t* cpu_s){
-    _pull_stack(cpu_s->memory_ptr, &cpu_s->reg, &cpu_s->reg.accumulator);
-    _update_zero_flag(&cpu_s->reg, cpu_s->reg.accumulator);
-    _update_negative_flag(&cpu_s->reg, cpu_s->reg.accumulator);
+    _pull_stack(cpu_s, &cpu_s->reg.accumulator);
+    _update_zero_flag(cpu_s, cpu_s->reg.accumulator);
+    _update_negative_flag(cpu_s, cpu_s->reg.accumulator);
 }
 void z6502_op_PLP(z6502_cpu_t* cpu_s){
-    _pull_register_stack(cpu_s->memory_ptr, &cpu_s->reg);
+    _pull_register_stack(cpu_s);
 }
 void z6502_op_ROL(z6502_cpu_t* cpu_s){
     uint8_t c;
     uint16_t addr;
+    uint8_t val;
     if (cpu_s->ir_mode == ACC) {
         c = (cpu_s->reg.accumulator >> 7) & 0x01;
         cpu_s->reg.accumulator = (cpu_s->reg.accumulator << 1) | (cpu_s->reg.processor_status.carry);
         cpu_s->reg.processor_status.carry = c;
-        _update_zero_flag(&cpu_s->reg, cpu_s->reg.accumulator);
-        _update_negative_flag(&cpu_s->reg, cpu_s->reg.accumulator);
+        _update_zero_flag(cpu_s, cpu_s->reg.accumulator);
+        _update_negative_flag(cpu_s, cpu_s->reg.accumulator);
     }
     else{
         addr = _get_operand(cpu_s);
-        c = (cpu_s->memory_ptr[addr] >> 7) & 0x01;
-        cpu_s->memory_ptr[addr] = (cpu_s->memory_ptr[addr] << 1) | (cpu_s->reg.processor_status.carry);
+        val = MEM_READ(addr);
+        c = (val >> 7) & 0x01;
+        val = (val << 1) | (cpu_s->reg.processor_status.carry);
+        MEM_WRITE(addr, val);
         cpu_s->reg.processor_status.carry = c;
-        _update_zero_flag(&cpu_s->reg, cpu_s->memory_ptr[addr]);
-        _update_negative_flag(&cpu_s->reg, cpu_s->memory_ptr[addr]);
+        _update_zero_flag(cpu_s, val);
+        _update_negative_flag(cpu_s, val);
     }
 }
 void z6502_op_ROR(z6502_cpu_t* cpu_s){
     uint8_t c;
     uint16_t addr;
+    uint8_t val;
     if (cpu_s->ir_mode == ACC) {
         c = cpu_s->reg.accumulator & 0x01;
         cpu_s->reg.accumulator = (cpu_s->reg.accumulator >> 1) | (cpu_s->reg.processor_status.carry << 7);
         cpu_s->reg.processor_status.carry = c;
-        _update_zero_flag(&cpu_s->reg, cpu_s->reg.accumulator);
-        _update_negative_flag(&cpu_s->reg, cpu_s->reg.accumulator);
+        _update_zero_flag(cpu_s, cpu_s->reg.accumulator);
+        _update_negative_flag(cpu_s, cpu_s->reg.accumulator);
     }
     else{
         addr = _get_operand(cpu_s);
-        c = cpu_s->memory_ptr[addr] & 0x01;
-        cpu_s->memory_ptr[addr] = (cpu_s->memory_ptr[addr] >> 1) | (cpu_s->reg.processor_status.carry << 7);
+        val = MEM_READ(addr);
+        c = val & 0x01;
+        val = (val >> 1) | (cpu_s->reg.processor_status.carry << 7);
+        MEM_WRITE(addr, val);
         cpu_s->reg.processor_status.carry = c;
-        _update_zero_flag(&cpu_s->reg, cpu_s->memory_ptr[addr]);
-        _update_negative_flag(&cpu_s->reg, cpu_s->memory_ptr[addr]);
+        _update_zero_flag(cpu_s, val);
+        _update_negative_flag(cpu_s, val);
     }
     
 }
 void z6502_op_RTI(z6502_cpu_t* cpu_s){
-    _pull_register_stack(cpu_s->memory_ptr, &cpu_s->reg);
-    _pull_stack(cpu_s->memory_ptr, &cpu_s->reg, (uint8_t*)&cpu_s->reg.program_counter);
-    _pull_stack(cpu_s->memory_ptr, &cpu_s->reg, (uint8_t*)&cpu_s->reg.program_counter + 1);
+    _pull_register_stack(cpu_s);
+    _pull_stack(cpu_s, (uint8_t*)&cpu_s->reg.program_counter);
+    _pull_stack(cpu_s, (uint8_t*)&cpu_s->reg.program_counter + 1);
 }
 void z6502_op_RTS(z6502_cpu_t* cpu_s){
-    _pull_stack(cpu_s->memory_ptr, &cpu_s->reg, (uint8_t*)&cpu_s->reg.program_counter);
-    _pull_stack(cpu_s->memory_ptr, &cpu_s->reg, (uint8_t*)&cpu_s->reg.program_counter + 1);
+    _pull_stack(cpu_s, (uint8_t*)&cpu_s->reg.program_counter);
+    _pull_stack(cpu_s, (uint8_t*)&cpu_s->reg.program_counter + 1);
     cpu_s->reg.program_counter++;
 }
 void z6502_op_SBC(z6502_cpu_t* cpu_s){
@@ -627,7 +641,7 @@ void z6502_op_SBC(z6502_cpu_t* cpu_s){
         tmp = _get_operand(cpu_s);
     }
     else{
-        tmp = cpu_s->memory_ptr[_get_operand(cpu_s)];
+        tmp = MEM_READ(_get_operand(cpu_s));
     }
 
     /*Only set in ABX, ABY and INY modes if page crossed*/
@@ -645,11 +659,11 @@ void z6502_op_SBC(z6502_cpu_t* cpu_s){
         res = cpu_s->reg.accumulator - tmp - (1U - cpu_s->reg.processor_status.carry);
     }
 
-    _update_overflow_flag(&cpu_s->reg, cpu_s->reg.accumulator, ~tmp, res);
-    _update_carry_flag(&cpu_s->reg, res);
+    _update_overflow_flag(cpu_s, cpu_s->reg.accumulator, ~tmp, res);
+    _update_carry_flag(cpu_s, res);
     cpu_s->reg.accumulator = (uint8_t)(res % 256);
-    _update_zero_flag(&cpu_s->reg, cpu_s->reg.accumulator);
-    _update_negative_flag(&cpu_s->reg, cpu_s->reg.accumulator);
+    _update_zero_flag(cpu_s, cpu_s->reg.accumulator);
+    _update_negative_flag(cpu_s, cpu_s->reg.accumulator);
 }
 void z6502_op_SEC(z6502_cpu_t* cpu_s){
     cpu_s->reg.processor_status.carry = 1U;
@@ -661,41 +675,41 @@ void z6502_op_SEI(z6502_cpu_t* cpu_s){
     cpu_s->reg.processor_status.irq_disable = 1U;
 }
 void z6502_op_STA(z6502_cpu_t* cpu_s){
-    cpu_s->memory_ptr[_get_operand(cpu_s)] = cpu_s->reg.accumulator;
+    MEM_WRITE(_get_operand(cpu_s), cpu_s->reg.accumulator);
 }
 void z6502_op_STX(z6502_cpu_t* cpu_s){
-    cpu_s->memory_ptr[_get_operand(cpu_s)] = cpu_s->reg.x;
+    MEM_WRITE(_get_operand(cpu_s), cpu_s->reg.x);
 }
 void z6502_op_STY(z6502_cpu_t* cpu_s){
-    cpu_s->memory_ptr[_get_operand(cpu_s)] = cpu_s->reg.y;
+    MEM_WRITE(_get_operand(cpu_s), cpu_s->reg.y);
 }
 void z6502_op_TAX(z6502_cpu_t* cpu_s){
     cpu_s->reg.x = cpu_s->reg.accumulator;
-    _update_zero_flag(&cpu_s->reg, cpu_s->reg.x);
-    _update_negative_flag(&cpu_s->reg, cpu_s->reg.x);
+    _update_zero_flag(cpu_s, cpu_s->reg.x);
+    _update_negative_flag(cpu_s, cpu_s->reg.x);
 }
 void z6502_op_TAY(z6502_cpu_t* cpu_s){
     cpu_s->reg.y = cpu_s->reg.accumulator;
-    _update_zero_flag(&cpu_s->reg, cpu_s->reg.y);
-    _update_negative_flag(&cpu_s->reg, cpu_s->reg.y);
+    _update_zero_flag(cpu_s, cpu_s->reg.y);
+    _update_negative_flag(cpu_s, cpu_s->reg.y);
 }
 void z6502_op_TSX(z6502_cpu_t* cpu_s){
     cpu_s->reg.x = cpu_s->reg.stack_pointer;
-    _update_zero_flag(&cpu_s->reg, cpu_s->reg.x);
-    _update_negative_flag(&cpu_s->reg, cpu_s->reg.x);
+    _update_zero_flag(cpu_s, cpu_s->reg.x);
+    _update_negative_flag(cpu_s, cpu_s->reg.x);
 }
 void z6502_op_TXA(z6502_cpu_t* cpu_s){
     cpu_s->reg.accumulator = cpu_s->reg.x;
-    _update_zero_flag(&cpu_s->reg, cpu_s->reg.accumulator);
-    _update_negative_flag(&cpu_s->reg, cpu_s->reg.accumulator);
+    _update_zero_flag(cpu_s, cpu_s->reg.accumulator);
+    _update_negative_flag(cpu_s, cpu_s->reg.accumulator);
 }
 void z6502_op_TXS(z6502_cpu_t* cpu_s){
     cpu_s->reg.stack_pointer = cpu_s->reg.x;
 }
 void z6502_op_TYA(z6502_cpu_t* cpu_s){
     cpu_s->reg.accumulator = cpu_s->reg.y;
-    _update_zero_flag(&cpu_s->reg, cpu_s->reg.accumulator);
-    _update_negative_flag(&cpu_s->reg, cpu_s->reg.accumulator);
+    _update_zero_flag(cpu_s, cpu_s->reg.accumulator);
+    _update_negative_flag(cpu_s, cpu_s->reg.accumulator);
 }
 
 
@@ -705,7 +719,7 @@ void z6502_init(z6502_cpu_t* cpu_s, uint8_t* memory_ptr){
 
 void z6502_reset(z6502_cpu_t* cpu_s) {
     /*Init special purpose registers*/
-    cpu_s->reg.program_counter = (uint16_t)(cpu_s->memory_ptr[Z6502_RESET_VECTOR_ADDRESS+1U]<<8) | (uint16_t)(cpu_s->memory_ptr[Z6502_RESET_VECTOR_ADDRESS]);
+    cpu_s->reg.program_counter = (uint16_t)(MEM_READ(Z6502_RESET_VECTOR_ADDRESS+1U)<<8) | (uint16_t)(MEM_READ(Z6502_RESET_VECTOR_ADDRESS));
     cpu_s->reg.stack_pointer = 0xFFU;
     cpu_s->reg.accumulator = 0U;
     cpu_s->reg.x = 0U;
@@ -725,7 +739,7 @@ void z6502_reset(z6502_cpu_t* cpu_s) {
 int z6502_step(z6502_cpu_t* cpu_s) {
     /*Read instruction*/
     cpu_s->ir_addr = cpu_s->reg.program_counter;
-    cpu_s->ir_opcode = cpu_s->memory_ptr[cpu_s->reg.program_counter];
+    cpu_s->ir_opcode = MEM_READ(cpu_s->reg.program_counter);
     cpu_s->ir_mode = z6502_instruction_mode[cpu_s->ir_opcode];
     cpu_s->ir_cycles = z6502_instruction_cycles[cpu_s->ir_opcode];
     cpu_s->page_crossing_flag = 0;
