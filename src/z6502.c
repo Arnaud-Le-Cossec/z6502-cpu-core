@@ -14,8 +14,11 @@
 
 #include "z6502.h"
 
-#define MEM_READ(addr) cpu_s->memory_ptr[addr]
-#define MEM_WRITE(addr, val) cpu_s->memory_ptr[addr] = val
+//*****************************************************************************
+// Memory access macros
+//*****************************************************************************
+
+
 
 //*****************************************************************************
 // Private functions
@@ -712,10 +715,17 @@ void z6502_op_TYA(z6502_cpu_t* cpu_s){
     _update_negative_flag(cpu_s, cpu_s->reg.accumulator);
 }
 
-
+#ifndef Z6502_USE_SYSTEM_BUS
 void z6502_init(z6502_cpu_t* cpu_s, uint8_t* memory_ptr){
     cpu_s->memory_ptr = memory_ptr;
 }
+#endif
+
+#ifdef Z6502_USE_SYSTEM_BUS
+void z6502_init(z6502_cpu_t* cpu_s, system_bus_t* bus_s){
+    cpu_s->bus_s = bus_s;
+}
+#endif
 
 void z6502_reset(z6502_cpu_t* cpu_s) {
     /*Init special purpose registers*/
