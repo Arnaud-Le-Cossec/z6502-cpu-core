@@ -18,11 +18,20 @@
 // Memory access macros
 //*****************************************************************************
 
-
+#define MEM_READ(addr) cpu_s->mem_read_clbk(cpu_s, addr)
+#define MEM_WRITE(addr, val) cpu_s->mem_write_clbk(cpu_s, addr, val)
 
 //*****************************************************************************
 // Private functions
 //*****************************************************************************
+
+static uint8_t _z6502_mem_read_default(z6502_cpu_t* cpu_s, uint16_t addr){
+    return cpu_s->memory_ptr[addr];
+}
+
+static void _z6502_mem_write_default(z6502_cpu_t* cpu_s, uint16_t addr, uint8_t val){
+    cpu_s->memory_ptr[addr] = val;
+}
 
 /**
  * @brief Get operand based on addressing mode
@@ -715,17 +724,17 @@ void z6502_op_TYA(z6502_cpu_t* cpu_s){
     _update_negative_flag(cpu_s, cpu_s->reg.accumulator);
 }
 
-#ifndef Z6502_USE_SYSTEM_BUS
-void z6502_init(z6502_cpu_t* cpu_s, uint8_t* memory_ptr){
+void z6502_init_mem(z6502_cpu_t* cpu_s, uint8_t* memory_ptr){
     cpu_s->memory_ptr = memory_ptr;
+    cpu_s->mem_read_clbk = _z6502_mem_read_default;
+    cpu_s->mem_write_clbk = _z6502_mem_write_default;
 }
-#endif
 
-#ifdef Z6502_USE_SYSTEM_BUS
-void z6502_init(z6502_cpu_t* cpu_s, system_bus_t* bus_s){
-    cpu_s->bus_s = bus_s;
+void z6502_init_bus(z6502_cpu_t* cpu_s, z6502_mem_read_t mem_read_clbk, z6502_mem_write_t mem_write_clbk){
+    cpu_s->memory_ptr = NULL;
+    cpu_s->mem_read_clbk = mem_read_clbk;
+    cpu_s->mem_write_clbk = mem_write_clbk;
 }
-#endif
 
 void z6502_reset(z6502_cpu_t* cpu_s) {
     /*Init special purpose registers*/

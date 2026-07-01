@@ -18,9 +18,6 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#ifdef Z6502_USE_SYSTEM_BUS
-#include "system_bus.h"
-#endif
 
 #define Z6502_MAX_MEMORY_SIZE_BYTES 65536U
 
@@ -31,13 +28,12 @@
 #define Z6502_RESET_VECTOR_ADDRESS 0xFFFCU
 #define Z6502_IRQ_VECTOR_ADDRESS 0xFFFEU
 
-#ifdef Z6502_USE_SYSTEM_BUS
-#define MEM_READ(addr) system_bus_read(cpu_s->bus_s, addr)
-#define MEM_WRITE(addr, val) system_bus_write(cpu_s->bus_s, addr, val);
-#else
-#define MEM_READ(addr) cpu_s->memory_ptr[addr]
-#define MEM_WRITE(addr, val) cpu_s->memory_ptr[addr] = val
-#endif
+/*Tell the compiler about the z6502_cpu structure*/
+struct z6502_cpu;
+
+/*Memory access functions*/
+typedef uint8_t (*z6502_mem_read_t)(struct z6502_cpu* cpu_s, uint16_t addr);
+typedef void (*z6502_mem_write_t)(struct z6502_cpu* cpu_s, uint16_t addr, uint8_t val);
 
 /*Addressing modes*/
 typedef enum 
@@ -82,10 +78,15 @@ typedef struct
 } z6502_register_set_t;
 
 /*CPU structure*/
-typedef struct
+typedef struct z6502_cpu
 {
     /*Registers*/
     z6502_register_set_t reg;
+
+    /*Memory*/
+    uint8_t* memory_ptr;
+    z6502_mem_read_t mem_read_clbk;
+    z6502_mem_write_t mem_write_clbk;
 
     /*Instruction register*/
     uint8_t ir_opcode;
@@ -96,13 +97,12 @@ typedef struct
     /*Misc. flag*/
     uint8_t page_crossing_flag;
 
-    #ifndef Z6502_USE_SYSTEM_BUS
-    /*Memory*/
-    uint8_t* memory_ptr;
-    #else
-    /*Bus handle*/
-    system_bus_t* bus_s;
-    #endif
+    //#ifndef Z6502_USE_SYSTEM_BUS
+    
+    //#else
+    ///*Bus handle*/
+    //system_bus_t* bus_s;
+    //#endif
 } z6502_cpu_t;
 
 
@@ -316,23 +316,27 @@ static const char* z6502_addressing_mode_str[] = {
 
 /*CPU workers prototypes*/
 
-#ifndef Z6502_USE_SYSTEM_BUS
+///**
+// * @brief Init CPU
+// * @param cpu_s CPU structure pointer
+// * @param memory_ptr memory pointer
+// */
+//void z6502_init(z6502_cpu_t* cpu_s, uint8_t* memory_ptr);
+
 /**
- * @brief Init CPU
+ * @brief Init CPU with direct memory access
  * @param cpu_s CPU structure pointer
  * @param memory_ptr memory pointer
  */
-void z6502_init(z6502_cpu_t* cpu_s, uint8_t* memory_ptr);
-#endif
+void z6502_init_mem(z6502_cpu_t* cpu_s, uint8_t* memory_ptr);
 
-#ifdef Z6502_USE_SYSTEM_BUS
 /**
- * @brief Init CPU
+ * @brief Init CPU with memory access through system bus
  * @param cpu_s CPU structure pointer
- * @param bus_s bus structure pointer
+ * @param mem_read_clbk memory read callback function pointer
+ * @param mem_write_clbk memory write callback function pointer
  */
-void z6502_init(z6502_cpu_t* cpu_s, system_bus_t* bus_s);
-#endif
+void z6502_init_bus(z6502_cpu_t* cpu_s, z6502_mem_read_t mem_read_clbk, z6502_mem_write_t mem_write_clbk);
 
 /**
  * @brief Reset CPU registers
